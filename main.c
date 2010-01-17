@@ -1,9 +1,9 @@
 ///\file main.c
 ///\author Viacheslav Slavinsky
 ///
-///\brief Patashnik
+///\brief Satashnik
 ///
-/// \mainpage Patashnik: nixie clock with AVR-driven boost converter and DS3234 RTC.
+/// \mainpage Satashnik: nixie clock with AVR-driven boost converter and DS3234 RTC.
 /// \section Files
 /// - main.c    main file
 /// - rtc.c     RTC-related stuff
@@ -93,20 +93,25 @@ void display_selectdigit(uint8_t n) {
     switch (n) {
         case SA1: 
                 PORTSA234 &= ~BV3(5,6,7);
+                _delay_ms(0.01);
+                display_currentdigit(n);
                 PORTSA1 |= _BV(0);
                 break;
         case SA2:
         case SA3:
         case SA4:
                 PORTSA1 &= ~_BV(0);
-                PORTSA234 = (PORTSA234 & ~BV3(5,6,7)) | (0200 >> (n-1));
+                PORTSA234 &= ~BV3(5,6,7);
+                _delay_ms(0.01);
+                display_currentdigit(n);
+                PORTSA234 |= 0200 >> (n-1);
+                //PORTSA234 = (PORTSA234 & ~BV3(5,6,7)) | (0200 >> (n-1));
                 break;
         default:
                 PORTSA234 &= ~BV3(5,6,7);
                 PORTSA1 &= ~_BV(0);
                 break;
     }
-    display_currentdigit(n);
     //printf("\nselect digit %d, port=%02x\n", n, PORTDIGIT);
 }
 
@@ -122,9 +127,9 @@ inline uint8_t duty_get() { return on_duty; }
 /// Start fading time to given value. 
 /// Transition is performed in TIMER0_OVF_vect and takes FADETIME cycles.
 void fadeto(uint16_t t) { 
-    //timef = t; fadetime = -1;
-    //voltage_adjust(0);
-    showtime_bcd(t);
+    cli();
+    timef = t; fadetime = -1;
+    sei();
 }
 
 inline uint16_t get_display_value() {
@@ -134,13 +139,19 @@ inline uint16_t get_display_value() {
 /// Start timer 0. Timer0 runs at 1MHz and overflows at 3906 Hz.
 void timer0_init() {
     TIMSK |= _BV(TOIE0);    // enable Timer0 overflow interrupt
-    TCCR0 = _BV(CS01);      // clk/8 -> 1mhz, overflow rate 3906hz
+    TCNT0 = 256-20;
+    TCCR0 = BV2(CS01,CS00);   // clk/64 = 125000Hz, overflow rate 488Hz
 }
 
 
 ISR(TIMER0_OVF_vect) {
     uint16_t toDisplay = time;
     static uint8_t effDuty;
+    static uint8_t odd = 0;
+    
+    odd += 1;
+    
+    TCNT0 = 256-20;
     
     voltage_adjust_tick();
     
@@ -185,7 +196,7 @@ ISR(TIMER0_OVF_vect) {
     }
     fadectr = (fadectr + 1) & 3;
 
-
+/*
     if (dispctr < on_duty<<2) {
         switch (blinkmode) {
             case BLINK_HH:
@@ -200,23 +211,27 @@ ISR(TIMER0_OVF_vect) {
             default:
                 break;
         }
-        
-        if (on_duty > 2 && dispctr < 4) {
-            // compensation: burn 2nd, 3rd digits 1/4th shorter in bright modes
-            toDisplay |= 0x0ff0;
-        }
     } else {
-        if (on_duty < 3 && (dispctr < (on_duty+1)<<2) && ((toDisplay & 0x00f0) == 0x20) && blinkmode == BLINK_NONE) {
-            // compensation: burn xx2x 1/4th longer
-            toDisplay |= 0xff0f;
-        } else {
-            toDisplay |= 0xffff;
-        }
+        toDisplay |= 0xffff;
     }
-    
-    //showtime_bcd(toDisplay);
+*/    
+    showtime_bcd(toDisplay);
     
     dispctr = (dispctr + 1) & 017;
+    
+    if (odd & 1) {
+        display_selectdigit(digitmux);
+        digitmux = (digitmux + 1) & 3;
+    } else {
+        switch (PORTDIGIT & 017) {
+            case 0x01: // 4
+            case 0x04: // 8
+            case 0x0a: // 3
+            case 0x0b: // 7
+                display_selectdigit(0377);
+                break;
+        }
+    }
 }
 
 
@@ -297,16 +312,12 @@ int main() {
     time = 0xffff;   
     rtime = timef = 0x1838;
     fadetime = -1;
+    fadeto(0x1838);
     
     timer0_init();
 
     _delay_ms(1000);
 
-    timef = 0xffff;
-    fadetime = -1;
-    _delay_ms(750);  
-    
-    
     wdt_enable(WDTO_250MS);
     
     for(i = 0;;i++) {
@@ -387,13 +398,13 @@ int main() {
             //update_daylight(rtime);
             
             skip = 512;
-            rtime = (bcd_increment((rtime & 0xff00) >> 8) << 8) | bcd_increment(rtime & 0xff);
+            rtime = bcd_increment((rtime & 0xff00) >> 8) | (bcd_increment(rtime & 0xff) << 8);
             
             if (!is_setting() && rtime != time && rtime != timef) {
                 fadeto(rtime);
             }            
 
-            time = rtime;
+            //time = rtime;
         }
 
         buttonry_tick(PIND & _BV(3), PIND & _BV(4));
@@ -404,8 +415,24 @@ int main() {
                 blinkhandler(1);
             }
         }
+        
+        _delay_ms(2);
+
+/*
+
+        // compensate for the brightness of the outer digits: make them burn shorter        
         _delay_ms(1);
-        //_delay_ms(50);
+        switch (PORTDIGIT & 017) {
+            case 0x01: // 4
+            case 0x04: // 8
+            case 0x0a: // 3
+            case 0x0b: // 7
+                display_selectdigit(0377);
+                break;
+            
+        }
+        _delay_ms(1);
+*/
     }
 }
 
