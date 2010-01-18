@@ -23,17 +23,14 @@ static uint8_t button1_state, button2_state;
 
 static uint8_t set_state;       //<! setup state, see enum _setstates 
 
-uint8_t reset_seconds = 0;      //<! a flag that tells to reset seconds to zero after set button is pressed
-
-
 RTC_TIME rtc_time;              //<! current time values, used only during setup 
 
 #define DDRBUTTONS  DDRC
 #define PORTBUTTONS PORTC
 #define PINBUTTONS  PINC
 
-#define BUTTON1     4
-#define BUTTON2     5
+#define BUTTON1     5
+#define BUTTON2     4
 
 
 /// Catch button press and release moments, call handler
@@ -71,7 +68,6 @@ void button1_handler(uint8_t on) {
         
         switch (set_state) {
             case SET_NONE:
-                //duty_set(duty_get() % 4 + 1);
                 mode_next();
                 skip = 1;
                 break;
@@ -94,8 +90,6 @@ void button1_handler(uint8_t on) {
                 rtc_time.minute = bcd_increment(rtc_time.minute);
                 if (rtc_time.minute == 0x60) rtc_time.minute = 0;
                 rtc_xminute(rtc_time.minute);
-                rtc_xseconds(0);
-                reset_seconds = 1;
                 
                 fadeto((get_display_value() & 0xff00) | rtc_time.minute);
                 break;
@@ -147,11 +141,15 @@ void button2_handler(uint8_t on) {
     if (on) {
         switch (set_state) {
             case SET_NONE:
-                set_state = SET_HOUR;
-                set_blinkmode(BLINK_HH);
-                rtc_time.hour = rtc_xhour(-1);
-                rtc_time.minute = rtc_xminute(-1); 
-                fadeto(maketime(rtc_time.hour, rtc_time.minute));
+                if (mode_get() == MMSS) {
+                    rtc_xseconds(0);
+                } else {
+                    set_state = SET_HOUR;
+                    set_blinkmode(BLINK_HH);
+                    rtc_time.hour = rtc_xhour(-1);
+                    rtc_time.minute = rtc_xminute(-1); 
+                    fadeto(maketime(rtc_time.hour, rtc_time.minute));
+                }
                 break;
             case SET_HOUR:
                 set_state = SET_MINUTE;
@@ -162,11 +160,6 @@ void button2_handler(uint8_t on) {
                 set_blinkmode(BLINK_ALL);
                 rtc_time.year = rtc_xyear(-1);
                 fadeto(0x2000 + rtc_time.year);
-
-                if (reset_seconds) {
-                    rtc_xseconds(0);
-                    reset_seconds = 0;
-                }
                 break;
             case SET_YEAR:
                 set_state = SET_MONTH;

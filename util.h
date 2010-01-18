@@ -45,11 +45,19 @@ enum _blinkmode {
     BLINK_ALL = 3,
 };
 
+/// Fade modes. 
+/// Fade is off for in setup and voltmeter modes
+enum _fademode {
+    FADE_OFF = 0,
+    FADE_ON
+};
+
+/// Display modes
 #define NDISPLAYMODES 3
 enum _displaymode {
-    HHMM = 0,
-    MMSS,
-    VOLTAGE
+    HHMM = 0,               //!< Normal mode, HH:MM
+    MMSS,                   //!< Minutes:Seconds mode, set button resets seconds to zero
+    VOLTAGE                 //!< Voltmeter mode
 };
 
 
@@ -82,15 +90,18 @@ void set_blinkmode(uint8_t mode);
 /// Called every blink, unless NULL
 void (*blinkhandler)(uint8_t);
 
-void duty_set(uint8_t d);
-
-uint8_t duty_get();
-
 void fadeto(uint16_t t);
 
 uint16_t get_display_value();
 
+/// Cycle display modes
+/// \see _displaymode
 void mode_next();
+
+/// get display mode
+/// \see _displaymode
+uint8_t mode_get();
+
 
 
 #endif
