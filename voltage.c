@@ -4,14 +4,10 @@
 #include "voltage.h"
 #include "util.h"
 
-static uint16_t voltage_delayed = 0;
-static uint8_t voltage_delay_count = 0;
+#include <stdio.h>
 
 volatile uint16_t voltage;                  //!< voltage (magic units)
 volatile uint16_t voltage_setpoint = 400;   //!< voltage setpoints (magic units)
-
-extern uint8_t on_duty;
-extern uint16_t time;
 
 extern uint16_t ocr1a_reload;
 
@@ -46,42 +42,6 @@ void pump_faster(int8_t dfreq) {
     ICR1 += dfreq;
 }
 
-inline void voltage_adjust(uint8_t flag) {
-/*
-    switch (flag) {
-    case 0:
-        if (on_duty == 4) {
-            if (((time & 0x00f0)>>4) == 2) {
-                voltage_setpoint = 410;
-                cli();
-                voltage_delayed = 380;
-                voltage_delay_count = 64;
-                sei();
-            } else {
-                voltage_setpoint = 380;
-            }
-        } else {
-            voltage_setpoint = 400;
-        }
-        break;
-    case 1:
-        voltage_setpoint = voltage_delayed;
-        break;
-    }
-*/    
-}
-
-
-void voltage_adjust_tick() {
-    if (voltage_delay_count != 0) {
-        voltage_delay_count--;
-        if (voltage_delay_count == 0) {
-            voltage_adjust(1);
-        }
-    }
-}
-
-
 void adc_init() {
     voltage = 0;
     
@@ -95,6 +55,13 @@ void adc_init() {
 
     ADCSRA |= _BV(ADSC); 
 }
+
+uint16_t voltage_getbcd() {
+    // 1024 = 500V
+    uint16_t val = (voltage * 32) / 65;
+    return tobcd16(val);
+}
+
 
 ISR(ADC_vect) {
     voltage = (voltage + ADC) / 2;

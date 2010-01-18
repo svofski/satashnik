@@ -42,3 +42,15 @@ uint8_t day_of_week(uint8_t y, uint8_t m, uint8_t d) {
     return (centurydays % 7);
 }
 
+uint16_t tobcd16(uint16_t x) {
+    uint16_t y;
+    
+    y  = x % 10;        x /= 10;       
+    y |= (x % 10)<<4;   x /= 10;
+    y |= (x % 100)<<8;  x /= 10; 
+    y |= 0xf000;
+    
+    return y;
+}
+
+

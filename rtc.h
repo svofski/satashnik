@@ -26,7 +26,7 @@ typedef struct _rtc_time {
 void rtc_init();
 void rtc_send(uint8_t b);
 void rtc_over();
-uint16_t rtc_gettime();
+uint16_t rtc_gettime(uint8_t);
 uint8_t rtc_rw(uint8_t addr, int8_t value);
 
 void rtc_dump();

@@ -6,29 +6,41 @@
 #include "util.h"
 #include "rtc.h"
 
+#define DDRRTCSEL    DDRB
+#define PORTRTCSEL   PORTB
+
+#define DDRSPI      DDRB
+#define PORTSPI     PORTB
+
+#define RTCSEL      6
+#define MISO        4
+#define MOSI        3
+#define SCK         5
+
 static void spi_wait() {
     while (!(SPSR & _BV(SPIF)));
 }
 
 void rtc_init() {
-    DDRD |= _BV(6);     // RTCSEL#
+    //DDRD |= _BV(4);     // RTCSEL#
+    DDRRTCSEL |= _BV(RTCSEL);
     
-    DDRB |= BV2(5,7);
-    DDRB &= ~_BV(6);
+    DDRSPI |= BV2(MOSI,SCK);
+    DDRB &= ~_BV(MISO);
     
-    PORTD |= _BV(6);
+    PORTRTCSEL |= _BV(RTCSEL);
     
     SPCR = BV4(SPE, MSTR, CPHA, SPR1);
 }
 
 void rtc_send(uint8_t b) {
-    PORTD &= ~_BV(6);
+    PORTRTCSEL &= ~_BV(RTCSEL); 
     SPDR = b;
     spi_wait();
 }
 
 void rtc_over() {
-    PORTD |= _BV(6);
+    PORTRTCSEL |= _BV(RTCSEL);
 }
 
 uint8_t rtc_rw(uint8_t addr, int8_t value) {
@@ -38,11 +50,11 @@ uint8_t rtc_rw(uint8_t addr, int8_t value) {
     return SPDR;
 }
 
-uint16_t rtc_gettime() {
+uint16_t rtc_gettime(uint8_t ss) {
     uint16_t time = 0;
 
-    // address 0    
-    rtc_send(1);
+    // address 0 for seconds, minutes; minutes, hours otherwise   
+    rtc_send(ss ? 0 : 1);
 
     // data 1
     rtc_send(0);

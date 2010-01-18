@@ -34,12 +34,13 @@ volatile uint16_t timef = 0;    //!< fadeto display value
 volatile uint8_t digitmux = 0;  //!< displayed digit, 0..3
 volatile uint16_t digitsraw = 0;   //!< raw port values
 
-volatile uint8_t  dispctr = 0;  //!< counts 0..15
 volatile uint8_t  on_duty = 1;  //!< values 1..4, gets multiplied by 4
 
 uint16_t ocr1a_reload = 121;
 
 volatile uint8_t blinktick = 0;
+
+volatile uint8_t display_mode = HHMM;
 
 
 volatile uint8_t blinkmode;     //!< current blinking mode
@@ -49,12 +50,13 @@ volatile uint8_t blinkduty;     //!< blinkmode duty
 volatile uint8_t fadeduty, fadectr; //!< crossfade counters
 volatile int16_t fadetime;      //!< crossfade time and trigger, write "-1" to start fade to timef
 
-#define FADETIME 512            //<! Transition time for xfading digits, in 3096 Hz clock-counts
-#define BLINKTIME 2048          //<! Blink time in 3096 Hz clock-counts
-#define BLINKBIT  10            //<! Flag bit, used internally by the blinker
+#define FADETIME    1024        //<! Transition time for xfading digits, in tmr0 overflow-counts
+#define BLINKTIME   4096        //<! Blink time in tmr0-overflow-counts
+#define BLINKBIT    10          //<! Flag bit, used internally by the blinker
 
 inline void set_blinkmode(uint8_t mode) {
     blinkmode = mode;
+    blinkctr = 0;
 }
 
 /// Init display-related DDRs.
@@ -79,47 +81,49 @@ void showtime_bcd(uint16_t time) {
     showtime((time & 0xf000)>>12, (time & 0x0f00)>>8, (time & 0x00f0)>>4, time & 0x000f);
 }
 
-void display_currentdigit(uint8_t n) {
+uint8_t display_currentdigit(uint8_t n) {
+    uint8_t dispbit = 0x0f;
+    
     if (n < 4) {
-        //PORTDIGIT &= ~BV4(0,1,2,3);
-        //PORTDIGIT |= 0x0f & (digitsraw >> (n<<2));
-        PORTDIGIT = (PORTDIGIT & ~BV4(0,1,2,3)) | (0x0f & (digitsraw >> (n<<2)));
+        dispbit = 0x0f & (digitsraw >> (n<<2));
+        PORTDIGIT = (PORTDIGIT & ~BV4(0,1,2,3)) | dispbit;
     } else {
         PORTDIGIT |= 0x0f;
     }
+    
+    return dispbit != 0x0f;
 }
 
 void display_selectdigit(uint8_t n) {
     switch (n) {
         case SA1: 
                 PORTSA234 &= ~BV3(5,6,7);
-                _delay_ms(0.01);
-                display_currentdigit(n);
-                PORTSA1 |= _BV(0);
+                _delay_ms(0.02);
+                if (display_currentdigit(n)) {
+                    PORTSA1 |= _BV(0);
+                }
                 break;
         case SA2:
         case SA3:
         case SA4:
                 PORTSA1 &= ~_BV(0);
                 PORTSA234 &= ~BV3(5,6,7);
-                _delay_ms(0.01);
-                display_currentdigit(n);
-                PORTSA234 |= 0200 >> (n-1);
-                //PORTSA234 = (PORTSA234 & ~BV3(5,6,7)) | (0200 >> (n-1));
+                _delay_ms(0.02);
+                if (display_currentdigit(n)) {
+                    PORTSA234 |= 0200 >> (n-1);
+                }
                 break;
         default:
                 PORTSA234 &= ~BV3(5,6,7);
                 PORTSA1 &= ~_BV(0);
                 break;
     }
-    //printf("\nselect digit %d, port=%02x\n", n, PORTDIGIT);
 }
 
 
 /// Sets tubes duty cycle. Valid values are 1..4.
 void duty_set(uint8_t d) {
     on_duty = d;
-    voltage_adjust(0);
 }
 
 inline uint8_t duty_get() { return on_duty; }
@@ -127,13 +131,19 @@ inline uint8_t duty_get() { return on_duty; }
 /// Start fading time to given value. 
 /// Transition is performed in TIMER0_OVF_vect and takes FADETIME cycles.
 void fadeto(uint16_t t) { 
-    cli();
     timef = t; fadetime = -1;
-    sei();
 }
 
 inline uint16_t get_display_value() {
     return timef;
+}
+
+void mode_next() {
+    display_mode = (display_mode + 1) % NDISPLAYMODES;
+}
+
+uint8_t mode_get() {
+    return display_mode;
 }
 
 /// Start timer 0. Timer0 runs at 1MHz and overflows at 3906 Hz.
@@ -146,25 +156,14 @@ void timer0_init() {
 
 ISR(TIMER0_OVF_vect) {
     uint16_t toDisplay = time;
-    static uint8_t effDuty;
     static uint8_t odd = 0;
     
     odd += 1;
     
     TCNT0 = 256-20;
     
-    voltage_adjust_tick();
-    
     if (blinkmode != BLINK_NONE) {
         blinkctr = (blinkctr + 1) % BLINKTIME;
-        if (blinkctr & _BV(BLINKBIT)) {
-            if (effDuty != blinkduty) {
-                blinktick = 1;
-            }
-            effDuty = blinkduty;
-        } else {
-            effDuty = on_duty;
-        }
     } 
     
     if (fadetime == -1) {
@@ -196,28 +195,25 @@ ISR(TIMER0_OVF_vect) {
     }
     fadectr = (fadectr + 1) & 3;
 
-/*
-    if (dispctr < on_duty<<2) {
+    if (blinkmode != BLINK_NONE && blinkctr > BLINKTIME/2) {
         switch (blinkmode) {
             case BLINK_HH:
-                if (dispctr >= (effDuty<<2)) toDisplay |= 0xff00;
+                toDisplay |= 0xff00;
                 break;
             case BLINK_MM:
-                if (dispctr >= (effDuty<<2)) toDisplay |= 0x00ff;
+                toDisplay |= 0x00ff;
                 break;
             case BLINK_ALL:
-                if (dispctr >= (effDuty<<2)) toDisplay |= 0xffff;
+                toDisplay |= 0xffff;
                 break;
             default:
                 break;
         }
-    } else {
-        toDisplay |= 0xffff;
     }
-*/    
+
     showtime_bcd(toDisplay);
     
-    dispctr = (dispctr + 1) & 017;
+    
     
     if (odd & 1) {
         display_selectdigit(digitmux);
@@ -316,7 +312,12 @@ int main() {
     
     timer0_init();
 
-    _delay_ms(1000);
+    _delay_ms(500);
+    
+    fadeto(0xffff);
+    
+    _delay_ms(500);
+    
 
     wdt_enable(WDTO_250MS);
     
@@ -339,15 +340,14 @@ int main() {
                         break;
                 case 2:
                         switch (byte) { 
-			case 'q':   pump_faster(-1);
-				    break;
-			case 'w':   pump_faster(+1);
-				    break;
-			case 'Q':   ocr1a_reload--;
-				    break;
-			case 'W':   ocr1a_reload++;
-				    break;
-
+            			case 'q':   pump_faster(-1);
+                				    break;
+            			case 'w':   pump_faster(+1);
+                				    break;
+            			case 'Q':   ocr1a_reload--;
+                				    break;
+            			case 'W':   ocr1a_reload++;
+                				    break;
                         case '`':   pump_nomoar();
                                     break;
                         case 'r':   rtc_dump();
@@ -382,7 +382,7 @@ int main() {
                             skip = 255;
                         }
                         
-                        printf_P(PSTR("OCR1A=%d ICR1=%d S=%d V=%d, Time=%04x, PORT=%1x\n"), OCR1A, ICR1, voltage_setpoint, voltage, time, PORTDIGIT & 0x0f);
+                        printf_P(PSTR("OCR1A=%d ICR1=%d S=%d V=%d, Time=%04x, voltagebcd=%04x\n"), OCR1A, ICR1, voltage_setpoint, voltage, time, voltage_getbcd());
                         break;
             }
             
@@ -394,20 +394,30 @@ int main() {
         if (skip != 0) {
             skip--;
         } else {
-            //rtime = rtc_gettime();//voltage;
-            //update_daylight(rtime);
+            rtime = rtc_gettime(0);
+            update_daylight(rtime);
             
-            skip = 512;
-            rtime = bcd_increment((rtime & 0xff00) >> 8) | (bcd_increment(rtime & 0xff) << 8);
+            switch (mode_get()) {
+                case HHMM:
+                    rtime = rtc_gettime(0);
+                    break;
+                case MMSS:
+                    rtime = rtc_gettime(1);
+                    break;
+                case VOLTAGE:
+                    rtime = voltage_getbcd();
+                    skip = 64;
+                    break;
+            }
             
+            cli();
             if (!is_setting() && rtime != time && rtime != timef) {
                 fadeto(rtime);
-            }            
-
-            //time = rtime;
+            }     
+            sei();       
         }
 
-        buttonry_tick(PIND & _BV(3), PIND & _BV(4));
+        buttonry_tick();
     
         if (blinktick) {        
             blinktick = 0;
@@ -417,22 +427,6 @@ int main() {
         }
         
         _delay_ms(2);
-
-/*
-
-        // compensate for the brightness of the outer digits: make them burn shorter        
-        _delay_ms(1);
-        switch (PORTDIGIT & 017) {
-            case 0x01: // 4
-            case 0x04: // 8
-            case 0x0a: // 3
-            case 0x0b: // 7
-                display_selectdigit(0377);
-                break;
-            
-        }
-        _delay_ms(1);
-*/
     }
 }
 

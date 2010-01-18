@@ -22,12 +22,6 @@ void adc_init();
 /// Terminate boost converter operation 
 void pump_nomoar();
 
-/// Adjust output voltage for specific display contents and duty cycle.
-/// flag = 0 initiates adjustment. Logic is magic.
-void voltage_adjust(uint8_t flag);
-
-/// Must be called every tick from the main timer interrupt routine.
-/// After voltage delay is expired, sets voltage setpoint to postponed value.
-void voltage_adjust_tick();
+uint16_t voltage_getbcd();
 
 #endif

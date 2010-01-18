@@ -45,6 +45,14 @@ enum _blinkmode {
     BLINK_ALL = 3,
 };
 
+#define NDISPLAYMODES 3
+enum _displaymode {
+    HHMM = 0,
+    MMSS,
+    VOLTAGE
+};
+
+
 /// Make BCD time from 2 bytes
 #define maketime(hh,mm) (((hh) << 8) + (mm))
 
@@ -55,6 +63,8 @@ enum _blinkmode {
 /// Convert to binary from BCD representation as a function.
 /// \see _frombcd
 uint8_t frombcd(uint8_t);
+
+uint16_t tobcd16(uint16_t);
 
 /// Return BCD count of days in month for given BCD year and month.
 /// Valid only for years 2000-2099.
@@ -80,6 +90,7 @@ void fadeto(uint16_t t);
 
 uint16_t get_display_value();
 
+void mode_next();
 
 
 #endif

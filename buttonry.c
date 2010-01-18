@@ -28,6 +28,13 @@ uint8_t reset_seconds = 0;      //<! a flag that tells to reset seconds to zero 
 
 RTC_TIME rtc_time;              //<! current time values, used only during setup 
 
+#define DDRBUTTONS  DDRC
+#define PORTBUTTONS PORTC
+#define PINBUTTONS  PINC
+
+#define BUTTON1     4
+#define BUTTON2     5
+
 
 /// Catch button press and release moments, call handler
 void debounce(uint8_t port, uint8_t* state, void (*handler)(uint8_t)) {
@@ -38,8 +45,8 @@ void debounce(uint8_t port, uint8_t* state, void (*handler)(uint8_t)) {
 
 /// Initialize ports and variables
 void buttons_init() {
-    DDRD &= ~BV2(3,4);
-    PORTD |= BV2(3,4);
+    DDRBUTTONS &= ~BV2(BUTTON1,BUTTON2);
+    PORTBUTTONS |= BV2(BUTTON1,BUTTON2);
     button1_state = button2_state = 0;
 }
 
@@ -64,7 +71,8 @@ void button1_handler(uint8_t on) {
         
         switch (set_state) {
             case SET_NONE:
-                duty_set(duty_get() % 4 + 1);
+                //duty_set(duty_get() % 4 + 1);
+                mode_next();
                 skip = 1;
                 break;
                 
@@ -191,7 +199,7 @@ uint8_t is_setting() {
     return set_state != SET_NONE;
 }
 
-void buttonry_tick(uint8_t b1, uint8_t b2) {
-    debounce(b1, &button1_state, button1_handler);
-    debounce(b2, &button2_state, button2_handler);
+void buttonry_tick() {
+    debounce(PINBUTTONS & _BV(BUTTON1), &button1_state, button1_handler);
+    debounce(PINBUTTONS & _BV(BUTTON2), &button2_state, button2_handler);
 }
