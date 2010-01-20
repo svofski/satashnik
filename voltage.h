@@ -8,6 +8,9 @@
 #ifndef _VOLTAGE_H
 #define _VOLTAGE_H
 
+#define VOLTAGE_WASTE   405                     //!< ~199V
+#define VOLTAGE_SAVE    367                     //!< ~180V
+
 extern volatile uint16_t voltage;               //!< voltage (magic units)
 extern volatile uint16_t voltage_setpoint;      //!< voltage setpoints (magic units)
 

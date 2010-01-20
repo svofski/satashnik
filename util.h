@@ -43,13 +43,15 @@ enum _blinkmode {
     BLINK_HH = 1,
     BLINK_MM = 2,
     BLINK_ALL = 3,
+    BLINK_SUPPRESS = 0200,  //!< To be OR'ed with current mode
 };
 
 /// Fade modes. 
 /// Fade is off for in setup and voltmeter modes
 enum _fademode {
     FADE_OFF = 0,
-    FADE_ON
+    FADE_ON,
+    FADE_SLOW
 };
 
 /// Display modes
@@ -60,6 +62,10 @@ enum _displaymode {
     VOLTAGE                 //!< Voltmeter mode
 };
 
+enum _savinmode {
+    WASTE = 0,
+    SAVE,
+};
 
 /// Make BCD time from 2 bytes
 #define maketime(hh,mm) (((hh) << 8) + (mm))
@@ -85,10 +91,17 @@ uint8_t bcd_increment(uint8_t x);
 uint8_t day_of_week(uint8_t y, uint8_t m, uint8_t d);
 
 /// Set blinkmode
-void set_blinkmode(uint8_t mode);
+void blinkmode_set(uint8_t mode);
+
+/// Get blinkmode
+uint8_t blinkmode_get();
 
 /// Called every blink, unless NULL
 void (*blinkhandler)(uint8_t);
+
+/// Sets fading mode and speed
+/// \see _fademode
+void set_fadespeed(uint8_t mode);
 
 void fadeto(uint16_t t);
 
@@ -102,6 +115,8 @@ void mode_next();
 /// \see _displaymode
 uint8_t mode_get();
 
+void savingmode_set(uint8_t s);
+uint8_t savingmode_get();
 
 
 #endif

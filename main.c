@@ -28,15 +28,17 @@
 #include "voltage.h"
 #include "buttonry.h"
 
-volatile uint16_t time = 0;     //!< current display value
-volatile uint16_t timef = 0;    //!< fadeto display value
+volatile uint16_t time = 0;         //!< current display value
+volatile uint16_t timef = 0;        //!< fadeto display value
 
-volatile uint8_t digitmux = 0;  //!< displayed digit, 0..3
-volatile uint16_t digitsraw = 0;   //!< raw port values
+volatile uint8_t digitmux = 0;              //!< displayed digit, 0..3
+volatile uint16_t digitsraw = 0;            //!< raw port values
+volatile uint16_t rawfadefrom = 0177777;    //!< digitsraw fade from
+volatile uint16_t rawfadeto = 0177777;      //!< digitsraw fade to
 
 uint16_t ocr1a_reload = 121;
 
-volatile uint8_t blinktick = 0; //!< 1 when a pressed button is autorepeated
+volatile uint8_t blinktick = 0;     //!< 1 when a pressed button is autorepeated
 
 volatile uint8_t display_mode = HHMM;   //!< current display mode. \see _displaymode
 
@@ -49,22 +51,62 @@ volatile uint8_t fadeduty, fadectr; //!< crossfade counters
 volatile int16_t fadetime;      //!< crossfade time and trigger, write "-1" to start fade to timef
 volatile uint8_t fademode;      //!< \see _fademode
 
+volatile uint8_t savingmode;    //!< nixe preservation mode
+
+
 #define FADETIME    1024        //<! Transition time for xfading digits, in tmr0 overflow-counts
+
+#define FADETIME_S  3000        //<! Slow transition time
+
 #define BLINKTIME   4096        //<! Blink time in tmr0-overflow-counts
 #define BLINKBIT    10          //<! Flag bit, used internally by the blinker
 
 #define TIMERCOUNT  15          //<! Timer reloads with 256-TIMERCOUNT
 
-inline void set_blinkmode(uint8_t mode) {
-    blinkmode = mode;
-    if (blinkmode == BLINK_NONE) {
-        fademode = FADE_ON;
-    } else {
-        fademode = FADE_OFF;
+volatile uint16_t fadetime_full = FADETIME;
+volatile uint16_t fadetime_quart= FADETIME/4;
+
+void set_fadespeed(uint8_t mode) {
+    switch (mode) {
+        case FADE_ON:
+            fadetime_full = FADETIME;
+            fadetime_quart = FADETIME/4;
+            fademode = FADE_ON;
+            break;
+        case FADE_OFF:
+            fademode = FADE_OFF;
+            break;
+        case FADE_SLOW:
+            fadetime_full = FADETIME_S;
+            fadetime_quart = FADETIME_S/4;
+            fademode = FADE_ON;
+            break;
     }
-    
+}
+
+
+inline void blinkmode_set(uint8_t mode) {
+    blinkmode = mode;
     blinkctr = 0;
 }
+
+inline uint8_t blinkmode_get() { return blinkmode; }
+
+void savingmode_set(uint8_t s) {
+    savingmode = s; 
+    switch (savingmode) {
+        case SAVE:
+            voltage_setpoint = VOLTAGE_SAVE;
+            break;
+        case WASTE:
+            voltage_setpoint = VOLTAGE_WASTE;
+            break;
+        default:
+            break;
+    }
+}
+inline uint8_t savingmode_get() { return savingmode; }
+
 
 /// Init display-related DDRs.
 void initdisplay() {
@@ -78,14 +120,14 @@ inline uint8_t swapbits(uint8_t x) {
     return ((x & 1) << 3) | (x & 2) | ((x & 4) >> 2) | ((x & 8) >> 1);
 }
 
-/// Update digitsraw with new hh:mm
-inline void showtime(uint8_t h1, uint8_t h2, uint8_t m1, uint8_t m2) {
-    digitsraw = (swapbits(h1)<<12) | (swapbits(h2)<<8) | (swapbits(m1)<<4) | swapbits(m2);
+/// get raw digits from hh:mm
+inline uint16_t getrawdigits(uint8_t h1, uint8_t h2, uint8_t m1, uint8_t m2) {
+    return (swapbits(h1)<<12) | (swapbits(h2)<<8) | (swapbits(m1)<<4) | swapbits(m2);
 }
 
-/// Update display time with new BCD value
-void showtime_bcd(uint16_t time) {
-    showtime((time & 0xf000)>>12, (time & 0x0f00)>>8, (time & 0x00f0)>>4, time & 0x000f);
+/// get raw digits from a BCD value
+uint16_t getrawdigits_bcd(uint16_t time) {
+    return getrawdigits((time & 0xf000)>>12, (time & 0x0f00)>>8, (time & 0x00f0)>>4, time & 0x000f);
 }
 
 /// Output the current digit code to ID1
@@ -133,7 +175,12 @@ void display_selectdigit(uint8_t n) {
 /// Start fading time to given value. 
 /// Transition is performed in TIMER0_OVF_vect and takes FADETIME cycles.
 void fadeto(uint16_t t) { 
-    timef = t; fadetime = -1;
+    uint16_t raw = getrawdigits_bcd(t); // takes time
+    cli();
+    timef = t; 
+    rawfadeto = raw;
+    fadetime = -1;
+    sei();
 }
 
 inline uint16_t get_display_value() {
@@ -142,10 +189,13 @@ inline uint16_t get_display_value() {
 
 void mode_next() {
     display_mode = (display_mode + 1) % NDISPLAYMODES;
-    if (display_mode == VOLTAGE) {
-        fademode = FADE_OFF;
-    } else {
-        fademode = FADE_ON;
+    switch (display_mode) {
+        case HHMM:  set_fadespeed(FADE_SLOW);
+                    break;
+        case MMSS:  set_fadespeed(FADE_ON);
+                    break;
+        case VOLTAGE: set_fadespeed(FADE_OFF);
+                    break;
     }
 }
 
@@ -184,7 +234,7 @@ ISR(TIMER0_OVF_vect) {
             fadetime = 1;
         } else {
             // start teh fade
-            fadetime = FADETIME;
+            fadetime = fadetime_full;
             fadeduty = 4;
             fadectr = 0;
         }
@@ -193,26 +243,29 @@ ISR(TIMER0_OVF_vect) {
     if (fadetime != 0) {
         fadetime--;
 
-        if (fadetime % (FADETIME/4) == 0) {
+        if (fadetime % fadetime_quart == 0) {
             fadeduty--;
         }
         
         if (fadetime == 0) {
             fadectr = 0;
             time = timef; // end fade
+            rawfadefrom = rawfadeto;
         }
     } 
     
 
-    if (fadectr < fadeduty) {
-        toDisplay = time;
+    if (savingmode && (fadectr>>3) < 2) {
+        toDisplay = 0xffff;
+    } else if ((fadectr>>3) < fadeduty) {
+        toDisplay = rawfadefrom;
     } 
     else {
-        toDisplay = timef;
+        toDisplay = rawfadeto;
     }
-    fadectr = (fadectr + 1) & 3;
+    fadectr = (fadectr + 1) & 037;
 
-    if (blinkmode != BLINK_NONE && blinkctr > BLINKTIME/2) {
+    if (blinkmode != BLINK_NONE && (blinkmode & 0200) == 0 && blinkctr > BLINKTIME/2) {
         switch (blinkmode) {
             case BLINK_HH:
                 toDisplay |= 0xff00;
@@ -228,7 +281,7 @@ ISR(TIMER0_OVF_vect) {
         }
     }
 
-    showtime_bcd(toDisplay);
+    digitsraw = toDisplay;
     
     if (odd & 1) {
         display_selectdigit(digitmux);
@@ -315,20 +368,21 @@ int main() {
     
     buttons_init();
  
-    time = 0xffff;   
-    rtime = timef = 0x1838;
-    fadetime = -1;
+    set_fadespeed(FADE_ON);
+    
+    rtime = time = timef = 0xffff;   
+
     fadeto(0x1838);
     
     timer0_init();
 
     _delay_ms(500);
-    
+
+    set_fadespeed(FADE_SLOW);    
     fadeto(0xffff);
     
     _delay_ms(500);
     
-
     wdt_enable(WDTO_250MS);
     
     for(i = 0;;i++) {
@@ -398,6 +452,15 @@ int main() {
         
         display_selectdigit(digitmux);
         digitmux = (digitmux + 1) & 3;
+
+        buttonry_tick();
+    
+        if (blinktick) {        
+            blinktick = 0;
+            if (blinkhandler != NULL) {
+                blinkhandler(1);
+            }
+        }
         
         if (skip != 0) {
             skip--;
@@ -414,27 +477,18 @@ int main() {
                     break;
                 case VOLTAGE:
                     rtime = voltage_getbcd();
-                    skip = 64;
+                    //skip = 64;
                     break;
             }
             
-            cli();
+            //cli();
             if (!is_setting() && rtime != time && rtime != timef) {
                 fadeto(rtime);
             }     
-            sei();       
+            //sei();       
         }
 
-        buttonry_tick();
-    
-        if (blinktick) {        
-            blinktick = 0;
-            if (blinkhandler != NULL) {
-                blinkhandler(1);
-            }
-        }
-        
-        _delay_ms(2);
+        _delay_ms(80);
     }
 }
 

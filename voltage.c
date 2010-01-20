@@ -6,8 +6,8 @@
 
 #include <stdio.h>
 
-volatile uint16_t voltage;                  //!< voltage (magic units)
-volatile uint16_t voltage_setpoint = 400;   //!< voltage setpoints (magic units)
+volatile uint16_t voltage;                            //!< voltage (magic units)
+volatile uint16_t voltage_setpoint = VOLTAGE_WASTE;   //!< voltage setpoints (magic units)
 
 extern uint16_t ocr1a_reload;
 

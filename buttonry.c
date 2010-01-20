@@ -61,6 +61,8 @@ void button1_handler(uint8_t on) {
     static uint8_t skip = 0;
     
     if (on) {
+        blinkmode_set(blinkmode_get() | 0200);  // don't blink while button is being depressed
+
         if (skip > 0) {
             skip--;
             return;
@@ -132,6 +134,7 @@ void button1_handler(uint8_t on) {
                 break;
         }
     } else {
+        blinkmode_set(blinkmode_get() & 0177);  // re-enable blinking
         cli(); blinkhandler = NULL; skip = 0; sei();
     }
 }
@@ -141,29 +144,39 @@ void button2_handler(uint8_t on) {
     if (on) {
         switch (set_state) {
             case SET_NONE:
-                if (mode_get() == MMSS) {
+                switch (mode_get()) {
+                case MMSS:
                     rtc_xseconds(0);
-                } else {
+                    break;
+                case HHMM:
                     set_state = SET_HOUR;
-                    set_blinkmode(BLINK_HH);
+                    blinkmode_set(BLINK_HH);
+                    set_fadespeed(FADE_OFF);
+                    
                     rtc_time.hour = rtc_xhour(-1);
                     rtc_time.minute = rtc_xminute(-1); 
                     fadeto(maketime(rtc_time.hour, rtc_time.minute));
+                    break;
+                case VOLTAGE:
+                    savingmode_set((savingmode_get() + 1) & 1);
+                    break;
+                default:
+                    break;
                 }
                 break;
             case SET_HOUR:
                 set_state = SET_MINUTE;
-                set_blinkmode(BLINK_MM);
+                blinkmode_set(BLINK_MM);
                 break;
             case SET_MINUTE:
                 set_state = SET_YEAR;
-                set_blinkmode(BLINK_ALL);
+                blinkmode_set(BLINK_ALL);
                 rtc_time.year = rtc_xyear(-1);
                 fadeto(0x2000 + rtc_time.year);
                 break;
             case SET_YEAR:
                 set_state = SET_MONTH;
-                set_blinkmode(BLINK_MM);
+                blinkmode_set(BLINK_MM);
                 
                 rtc_time.month = rtc_xmonth(-1);
                 if (rtc_time.month == 0) rtc_time.month = 1;
@@ -175,12 +188,13 @@ void button2_handler(uint8_t on) {
                 break;
             case SET_MONTH:
                 set_state = SET_DAY;
-                set_blinkmode(BLINK_HH);
+                blinkmode_set(BLINK_HH);
                 break;
             case SET_DAY:
             default:
                 set_state = SET_NONE;
-                set_blinkmode(BLINK_NONE);
+                blinkmode_set(BLINK_NONE);
+                set_fadespeed(FADE_ON);
                 break;
         }
     } else {
