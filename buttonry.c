@@ -194,7 +194,7 @@ void button2_handler(uint8_t on) {
             default:
                 set_state = SET_NONE;
                 blinkmode_set(BLINK_NONE);
-                set_fadespeed(FADE_ON);
+                set_fadespeed(FADE_SLOW);
                 break;
         }
     } else {
