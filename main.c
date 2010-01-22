@@ -271,7 +271,7 @@ ISR(TIMER0_OVF_vect) {
     } 
     
     
-    if ((fadectr & 7) < (( (dotmode == DOT_OFF || blinkctr>bcq2) && !(dotmode == DOT_ON)) ? 1:2)) {
+    if ((fadectr & 7) < (( (dotmode == DOT_OFF || blinkctr>bcq2) && !(dotmode == DOT_ON)) ? 0:1)) {
         PORTDOT |= _BV(DOT);
     } else {
         PORTDOT &= ~_BV(DOT);
