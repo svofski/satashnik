@@ -17,6 +17,10 @@
 #define PORTSA1    PORTB
 #define DDRSA1     DDRB
 
+#define PORTDOT     PORTD
+#define DDRDOT      DDRD
+#define DOT         3
+
 #define PORTHVPUMP PORTB
 #define DDRHVPUMP  DDRB
 
@@ -65,6 +69,12 @@ enum _displaymode {
 enum _savinmode {
     WASTE = 0,
     SAVE,
+};
+
+enum _dotmode {
+    DOT_BLINK = 0,
+    DOT_ON,
+    DOT_OFF
 };
 
 /// Make BCD time from 2 bytes

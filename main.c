@@ -53,18 +53,22 @@ volatile uint8_t fademode;      //!< \see _fademode
 
 volatile uint8_t savingmode;    //!< nixe preservation mode
 
+volatile uint8_t dotmode;       //!< dot blinking mode \see _dotmode
+volatile uint8_t dot_duty = 0;
 
-#define FADETIME    1024        //<! Transition time for xfading digits, in tmr0 overflow-counts
 
-#define FADETIME_S  3000        //<! Slow transition time
+#define FADETIME    256        //<! Transition time for xfading digits, in tmr0 overflow-counts
 
-#define BLINKTIME   4096        //<! Blink time in tmr0-overflow-counts
-#define BLINKBIT    10          //<! Flag bit, used internally by the blinker
+#define FADETIME_S  512        //<! Slow transition time
 
-#define TIMERCOUNT  15          //<! Timer reloads with 256-TIMERCOUNT
+#define TIMERCOUNT  80          //<! Timer reloads with 256-TIMERCOUNT
 
 volatile uint16_t fadetime_full = FADETIME;
 volatile uint16_t fadetime_quart= FADETIME/4;
+
+uint16_t bcq1;
+uint16_t bcq2;
+uint16_t bcq3;
 
 void set_fadespeed(uint8_t mode) {
     switch (mode) {
@@ -85,9 +89,13 @@ void set_fadespeed(uint8_t mode) {
 }
 
 
+void dotmode_set(uint8_t mode) {
+    dotmode = mode;
+}
+
 inline void blinkmode_set(uint8_t mode) {
     blinkmode = mode;
-    blinkctr = 0;
+    //blinkctr = 0;
 }
 
 inline uint8_t blinkmode_get() { return blinkmode; }
@@ -111,17 +119,18 @@ inline uint8_t savingmode_get() { return savingmode; }
 /// Init display-related DDRs.
 void initdisplay() {
     DDRDIGIT |= BV4(0,1,2,3);
+    DDRDOT |= _BV(DOT);
     DDRSA1 |= _BV(0);
     DDRSA234 |= BV3(5,6,7);
 }
 
 /// Rehash bits to match the schematic
-inline uint8_t swapbits(uint8_t x) {
+uint8_t swapbits(uint8_t x) {
     return ((x & 1) << 3) | (x & 2) | ((x & 4) >> 2) | ((x & 8) >> 1);
 }
 
 /// get raw digits from hh:mm
-inline uint16_t getrawdigits(uint8_t h1, uint8_t h2, uint8_t m1, uint8_t m2) {
+uint16_t getrawdigits(uint8_t h1, uint8_t h2, uint8_t m1, uint8_t m2) {
     return (swapbits(h1)<<12) | (swapbits(h2)<<8) | (swapbits(m1)<<4) | swapbits(m2);
 }
 
@@ -150,7 +159,7 @@ void display_selectdigit(uint8_t n) {
     switch (n) {
         case SA1: 
                 PORTSA234 &= ~BV3(5,6,7);
-                _delay_ms(0.02);
+                //_delay_ms(0.02); ghosting
                 if (display_currentdigit(n)) {
                     PORTSA1 |= _BV(0);
                 }
@@ -160,7 +169,7 @@ void display_selectdigit(uint8_t n) {
         case SA4:
                 PORTSA1 &= ~_BV(0);
                 PORTSA234 &= ~BV3(5,6,7);
-                _delay_ms(0.02);
+                //_delay_ms(0.02); ghosting
                 if (display_currentdigit(n)) {
                     PORTSA234 |= 0200 >> (n-1);
                 }
@@ -191,10 +200,13 @@ void mode_next() {
     display_mode = (display_mode + 1) % NDISPLAYMODES;
     switch (display_mode) {
         case HHMM:  set_fadespeed(FADE_SLOW);
+                    dotmode_set(DOT_BLINK);
                     break;
         case MMSS:  set_fadespeed(FADE_ON);
+                    dotmode_set(DOT_BLINK);
                     break;
         case VOLTAGE: set_fadespeed(FADE_OFF);
+                    dotmode_set(DOT_OFF);
                     break;
     }
 }
@@ -210,7 +222,6 @@ void timer0_init() {
     TCCR0 = BV2(CS01,CS00);   // clk/64 = 125000Hz, full overflow rate 488Hz
 }
 
-
 ISR(TIMER0_OVF_vect) {
     uint16_t toDisplay = time;
     static uint8_t odd = 0;
@@ -221,12 +232,17 @@ ISR(TIMER0_OVF_vect) {
     TCNT0 = 256-TIMERCOUNT;
     
     // In blink modes: increment the counter and activate "blinktick" for button autorepeat
+    //blinkctr = (blinkctr + 1) % BLINKTIME;
+    blinkctr++;
+    if (blinkctr > (bcq2<<1)) {
+        blinkctr = 0;
+    }
+    
     if (blinkmode != BLINK_NONE) {
-        blinkctr = (blinkctr + 1) % BLINKTIME;
-        if (blinkctr == BLINKTIME/4) {
+        if (blinkctr == bcq1 || blinkctr == bcq2 || blinkctr == bcq3 || blinkctr == 1) {
             blinktick = 1;
         }
-    } 
+    }
     
     if (fadetime == -1) {
         if (fademode == FADE_OFF) {
@@ -254,6 +270,12 @@ ISR(TIMER0_OVF_vect) {
         }
     } 
     
+    
+    if ((fadectr & 7) < (( (dotmode == DOT_OFF || blinkctr>bcq2) && !(dotmode == DOT_ON)) ? 1:2)) {
+        PORTDOT |= _BV(DOT);
+    } else {
+        PORTDOT &= ~_BV(DOT);
+    }
 
     if (savingmode && (fadectr>>3) < 2) {
         toDisplay = 0xffff;
@@ -265,7 +287,7 @@ ISR(TIMER0_OVF_vect) {
     }
     fadectr = (fadectr + 1) & 037;
 
-    if (blinkmode != BLINK_NONE && (blinkmode & 0200) == 0 && blinkctr > BLINKTIME/2) {
+    if (blinkmode != BLINK_NONE && (blinkmode & 0200) == 0 && blinkctr > bcq2) {
         switch (blinkmode) {
             case BLINK_HH:
                 toDisplay |= 0xff00;
@@ -341,6 +363,19 @@ void update_daylight(uint16_t time) {
     }
 }
 
+void calibrate_blinking() {
+    bcq1 = bcq2 = bcq3 = 65535;
+    for(bcq1 = rtc_gettime(1); bcq1 == rtc_gettime(1););
+    blinkctr = 0; 
+    for(bcq1 = rtc_gettime(1); bcq1 == rtc_gettime(1););
+    cli();
+    bcq1 = blinkctr/4;
+    bcq2 = 2*blinkctr/4;
+    bcq3 = 3*blinkctr/4;
+    //printf_P(PSTR("%d %d %d %d\n"), blinkctr, bcq1, bcq2, bcq3);
+    sei();
+}
+
 /// Program main
 int main() {
     uint8_t i;
@@ -348,6 +383,7 @@ int main() {
     uint8_t byte;
     volatile uint16_t skip = 0;
     uint8_t uart_enabled = 0;
+    volatile uint16_t mmss, mmss1;
     
     pump_nomoar();
     
@@ -376,7 +412,7 @@ int main() {
     
     timer0_init();
 
-    _delay_ms(500);
+    calibrate_blinking();
 
     set_fadespeed(FADE_SLOW);    
     fadeto(0xffff);
@@ -404,31 +440,7 @@ int main() {
                         break;
                 case 2:
                         switch (byte) { 
-            			case 'q':   pump_faster(-1);
-                				    break;
-            			case 'w':   pump_faster(+1);
-                				    break;
-            			case 'Q':   ocr1a_reload--;
-                				    break;
-            			case 'W':   ocr1a_reload++;
-                				    break;
                         case '`':   pump_nomoar();
-                                    break;
-                        case 'r':   rtc_dump();
-                                    break;
-                        case 't':   printf_P(PSTR("time=%04x\n"), time);
-                                    break;
-                        case 'v':   voltage_setpoint++;
-                                    break;
-                        case 'V':   voltage_setpoint--;
-                                    break;
-                        case 'n':   rtime = 0x1838;
-                                    fadeto(rtime);
-                                    skip = 32768;
-                                    break;
-                        case 'b':   blinkmode = (blinkmode + 1) % 4;
-                                    blinkduty = 0;
-                                    blinkctr = BLINKTIME;
                                     break;
                         case '.':   break;
                         case '=':   // die
@@ -450,9 +462,6 @@ int main() {
             
         }
         
-        display_selectdigit(digitmux);
-        digitmux = (digitmux + 1) & 3;
-
         buttonry_tick();
     
         if (blinktick) {        
@@ -465,7 +474,14 @@ int main() {
         if (skip != 0) {
             skip--;
         } else {
+            mmss = rtc_gettime(1);
+            if (!is_setting() && mmss != mmss1) {
+                mmss1 = mmss;
+                cli(); blinkctr = 0; sei();
+            }
+            
             rtime = rtc_gettime(0);
+            
             update_daylight(rtime);
             
             switch (mode_get()) {
@@ -473,7 +489,7 @@ int main() {
                     rtime = rtc_gettime(0);
                     break;
                 case MMSS:
-                    rtime = rtc_gettime(1);
+                    rtime = mmss;
                     break;
                 case VOLTAGE:
                     rtime = voltage_getbcd();
@@ -488,7 +504,7 @@ int main() {
             //sei();       
         }
 
-        _delay_ms(80);
+        _delay_ms(40);
     }
 }
 

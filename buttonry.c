@@ -152,6 +152,7 @@ void button2_handler(uint8_t on) {
                     set_state = SET_HOUR;
                     blinkmode_set(BLINK_HH);
                     set_fadespeed(FADE_OFF);
+                    dotmode_set(DOT_ON);
                     
                     rtc_time.hour = rtc_xhour(-1);
                     rtc_time.minute = rtc_xminute(-1); 
@@ -171,6 +172,7 @@ void button2_handler(uint8_t on) {
             case SET_MINUTE:
                 set_state = SET_YEAR;
                 blinkmode_set(BLINK_ALL);
+                dotmode_set(DOT_OFF);
                 rtc_time.year = rtc_xyear(-1);
                 fadeto(0x2000 + rtc_time.year);
                 break;
@@ -195,6 +197,7 @@ void button2_handler(uint8_t on) {
                 set_state = SET_NONE;
                 blinkmode_set(BLINK_NONE);
                 set_fadespeed(FADE_SLOW);
+                dotmode_set(DOT_BLINK);
                 break;
         }
     } else {
