@@ -58,11 +58,11 @@ volatile uint8_t dotmode;       //!< dot blinking mode \see _dotmode
 static uint8_t daylight_adjusted = 0;
 
 
-#define FADETIME    256        //<! Transition time for xfading digits, in tmr0 overflow-counts
+#define FADETIME    128        //<! Transition time for xfading digits, in tmr0 overflow-counts
 
-#define FADETIME_S  512        //<! Slow transition time
+#define FADETIME_S  256        //<! Slow transition time
 
-#define TIMERCOUNT  80          //<! Timer reloads with 256-TIMERCOUNT
+#define TIMERCOUNT  25          //<! Timer reloads with 256-TIMERCOUNT
 
 volatile uint16_t fadetime_full = FADETIME;
 volatile uint16_t fadetime_quart= FADETIME/4;
@@ -160,7 +160,7 @@ void display_selectdigit(uint8_t n) {
     switch (n) {
         case SA1: 
                 PORTSA234 &= ~BV3(5,6,7);
-                //_delay_ms(0.02); ghosting
+                _delay_ms(0.01); //ghosting
                 if (display_currentdigit(n)) {
                     PORTSA1 |= _BV(0);
                 }
@@ -170,7 +170,7 @@ void display_selectdigit(uint8_t n) {
         case SA4:
                 PORTSA1 &= ~_BV(0);
                 PORTSA234 &= ~BV3(5,6,7);
-                //_delay_ms(0.02); ghosting
+                _delay_ms(0.01); //ghosting
                 if (display_currentdigit(n)) {
                     PORTSA234 |= 0200 >> (n-1);
                 }
@@ -220,10 +220,11 @@ uint8_t mode_get() {
 void timer0_init() {
     TIMSK |= _BV(TOIE0);    // enable Timer0 overflow interrupt
     TCNT0 = 256-TIMERCOUNT;
-    TCCR0 = BV2(CS01,CS00);   // clk/64 = 125000Hz, full overflow rate 488Hz
+    //TCCR0 = BV2(CS01,CS00);   // clk/64 = 125000Hz, full overflow rate 488Hz
+    TCCR0 = _BV(CS01);
     
-    TCCR2 = _BV(CS21);
-    TIMSK |= _BV(TOIE2);
+    //TCCR2 = _BV(CS21); // div 8
+    //TIMSK |= _BV(TOIE2);
 }
 
 ISR(TIMER2_OVF_vect) {
@@ -244,85 +245,99 @@ ISR(TIMER0_OVF_vect) {
     uint16_t toDisplay = time;
     static uint8_t odd = 0;
     
-    odd += 1;
-    
     // Reload the timer
     TCNT0 = 256-TIMERCOUNT;
-    
-    // In blink modes: increment the counter and activate "blinktick" for button autorepeat
-    //blinkctr = (blinkctr + 1) % BLINKTIME;
-    blinkctr++;
-    if (blinkctr > (bcq2<<1)) {
-        blinkctr = 0;
-    }
-    
-    if (blinkmode != BLINK_NONE) {
-        if (blinkctr == bcq1 || blinkctr == bcq2 || blinkctr == bcq3 || blinkctr == 1) {
-            blinktick = 1;
-        }
-    }
-    
-    if (fadetime == -1) {
-        if (fademode == FADE_OFF) {
-            fadeduty = 1;
-            fadetime = 1;
-        } else {
-            // start teh fade
-            fadetime = fadetime_full;
-            fadeduty = 4;
-            fadectr = 0;
-        }
-    }
-    
-    if (fadetime != 0) {
-        fadetime--;
 
-        if (fadetime % fadetime_quart == 0) {
-            fadeduty--;
+    odd += 1;
+
+    if ((odd & 7) < (( (dotmode == DOT_OFF || blinkctr>bcq2) && !(dotmode == DOT_ON)) ? 0:1) 
+        || ((dotmode == DOT_BLINK) && ((blinkctr <= 4) || ((odd & 0x7f) == 0)))) {
+        PORTDOT |= _BV(DOT);
+    } else {
+        PORTDOT &= ~_BV(DOT);
+    }
+    
+    if ((odd & 0x3f) == 0) {
+        blinktick |= _BV(2);
+    }
+    
+    if ((odd & 0x1f) == 0) {
+        // In blink modes: increment the counter and activate "blinktick" for button autorepeat
+        blinkctr++;
+        if (blinkctr > (bcq2<<1)) {
+            blinkctr = 0;
         }
         
-        if (fadetime == 0) {
-            fadectr = 0;
-            time = timef; // end fade
-            rawfadefrom = rawfadeto;
+        if (blinkmode != BLINK_NONE) {
+            if (blinkctr == bcq1 || blinkctr == bcq2 || blinkctr == bcq3 || blinkctr == 1) {
+                blinktick |= _BV(1);
+            }
         }
-    } 
-    
-    
-    if (savingmode && (fadectr>>3) < 2) {
-        toDisplay = 0xffff;
-    } else if ((fadectr>>3) < fadeduty) {
-        toDisplay = rawfadefrom;
-    } 
-    else {
-        toDisplay = rawfadeto;
-    }
-    fadectr = (fadectr + 1) & 037;
-
-    if (blinkmode != BLINK_NONE && (blinkmode & 0200) == 0 && blinkctr > bcq2) {
-        switch (blinkmode) {
-            case BLINK_HH:
-                toDisplay |= 0xff00;
-                break;
-            case BLINK_MM:
-                toDisplay |= 0x00ff;
-                break;
-            case BLINK_ALL:
-                toDisplay |= 0xffff;
-                break;
-            default:
-                break;
+        
+        if (fadetime == -1) {
+            if (fademode == FADE_OFF) {
+                fadeduty = 1;
+                fadetime = 1;
+            } else {
+                // start teh fade
+                fadetime = fadetime_full;
+                fadeduty = 4;
+                fadectr = 0;
+            }
         }
-    }
-
-    digitsraw = toDisplay;
+        
+        if (fadetime != 0) {
+            fadetime--;
     
-    if (odd & 1) {
+            if (fadetime % fadetime_quart == 0) {
+                fadeduty--;
+            }
+            
+            if (fadetime == 0) {
+                fadectr = 0;
+                time = timef; // end fade
+                rawfadefrom = rawfadeto;
+            }
+        } 
+        
+        
+        if (savingmode && (fadectr>>3) < 1) {
+            toDisplay = 0xffff;
+        } else if ((fadectr>>3) < fadeduty) {
+            toDisplay = rawfadefrom;
+        } 
+        else {
+            toDisplay = rawfadeto;
+        }
+        fadectr = (fadectr + 1) & 037;
+    
+        if (blinkmode != BLINK_NONE && (blinkmode & 0200) == 0 && blinkctr > bcq2) {
+            switch (blinkmode) {
+                case BLINK_HH:
+                    toDisplay |= 0xff00;
+                    break;
+                case BLINK_MM:
+                    toDisplay |= 0x00ff;
+                    break;
+                case BLINK_ALL:
+                    toDisplay |= 0xffff;
+                    break;
+                default:
+                    break;
+            }
+        }
+    
+        digitsraw = toDisplay;
+    }
+    
+    // every other cycle, select the next digit...
+    if ((odd & 0x1f) == 0) {
         display_selectdigit(digitmux);
         digitmux = (digitmux + 1) & 3;
-    } else {
+    } else if ((odd & 0x1f) == 0x18) {
+        // and every other + 1, blank those that stand out too much
         switch (PORTDIGIT & 017) {
-            case 0x0a: // 3 stands out too much
+            case 0x0a: // "3"
                 display_selectdigit(0377);
                 break;
         }
@@ -382,7 +397,6 @@ void calibrate_blinking() {
     bcq1 = blinkctr/4;
     bcq2 = 2*blinkctr/4;
     bcq3 = 3*blinkctr/4;
-    //printf_P(PSTR("%d %d %d %d\n"), blinkctr, bcq1, bcq2, bcq3);
     sei();
 }
 
@@ -433,6 +447,8 @@ int main() {
     
     wdt_enable(WDTO_250MS);
     
+    set_sleep_mode(SLEEP_MODE_IDLE);
+    
     for(i = 0;;i++) {
         wdt_reset();
         
@@ -476,8 +492,8 @@ int main() {
         
         buttonry_tick();
     
-        if (blinktick) {        
-            blinktick = 0;
+        if ((blinktick & _BV(1)) != 0) {        
+            blinktick &= ~_BV(1);
             if (blinkhandler != NULL) {
                 blinkhandler(1);
             }
@@ -515,8 +531,13 @@ int main() {
             }     
             //sei();       
         }
-
-        _delay_ms(10);
+        
+        // just waste time
+        while((blinktick & _BV(2)) == 0) {
+            sleep_enable();
+            sleep_cpu();
+        }
+        blinktick &= ~_BV(2);
     }
 }
 
