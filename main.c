@@ -55,6 +55,9 @@ volatile uint8_t savingmode;    //!< nixe preservation mode
 
 volatile uint8_t dotmode;       //!< dot blinking mode \see _dotmode
 
+static uint8_t daylight_adjusted = 0;
+
+
 #define FADETIME    256        //<! Transition time for xfading digits, in tmr0 overflow-counts
 
 #define FADETIME_S  512        //<! Slow transition time
@@ -333,8 +336,6 @@ ISR(TIMER0_OVF_vect) {
 /// 
 /// And try to do this only once..
 void update_daylight(uint16_t time) {
-    static uint8_t daylight_adjusted = 0;
-
     if (time == 0x0000) daylight_adjusted = 0;
     
     if (daylight_adjusted) return;
@@ -353,7 +354,7 @@ void update_daylight(uint16_t time) {
                         daylight_adjusted = 1;
                     }
                     break;
-                case 10:
+                case 0x10:
                     if (rtc_xday(-1) > 0x24) {
                         // last sunday of october
                         if (time == 0x0300) {
@@ -467,7 +468,7 @@ int main() {
                             skip = 255;
                         }
                         
-                        printf_P(PSTR("OCR1A=%d ICR1=%d S=%d V=%d, Time=%04x, voltagebcd=%04x\n"), OCR1A, ICR1, voltage_setpoint, voltage, time, voltage_getbcd());
+                        printf_P(PSTR("OCR1A=%d ICR1=%d S=%d V=%d, Time=%04x (%d) adjed=%d\n"), OCR1A, ICR1, voltage_setpoint, voltage, time, rtc_xdow(-1), daylight_adjusted);
                         break;
             }
             
@@ -515,7 +516,7 @@ int main() {
             //sei();       
         }
 
-        _delay_ms(40);
+        _delay_ms(10);
     }
 }
 
