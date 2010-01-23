@@ -54,8 +54,6 @@ volatile uint8_t fademode;      //!< \see _fademode
 volatile uint8_t savingmode;    //!< nixe preservation mode
 
 volatile uint8_t dotmode;       //!< dot blinking mode \see _dotmode
-volatile uint8_t dot_duty = 0;
-
 
 #define FADETIME    256        //<! Transition time for xfading digits, in tmr0 overflow-counts
 
@@ -220,6 +218,23 @@ void timer0_init() {
     TIMSK |= _BV(TOIE0);    // enable Timer0 overflow interrupt
     TCNT0 = 256-TIMERCOUNT;
     TCCR0 = BV2(CS01,CS00);   // clk/64 = 125000Hz, full overflow rate 488Hz
+    
+    TCCR2 = _BV(CS21);
+    TIMSK |= _BV(TOIE2);
+}
+
+ISR(TIMER2_OVF_vect) {
+    static uint8_t t;
+    
+    TCNT2 = 256-25;
+    
+    t++;
+    if ((t & 7) < (( (dotmode == DOT_OFF || blinkctr>bcq2) && !(dotmode == DOT_ON)) ? 0:1) 
+        || ((dotmode == DOT_BLINK) && ((blinkctr <= 4) || ((t & 0x7f) == 0)))) {
+        PORTDOT |= _BV(DOT);
+    } else {
+        PORTDOT &= ~_BV(DOT);
+    }
 }
 
 ISR(TIMER0_OVF_vect) {
@@ -271,12 +286,6 @@ ISR(TIMER0_OVF_vect) {
     } 
     
     
-    if ((fadectr & 7) < (( (dotmode == DOT_OFF || blinkctr>bcq2) && !(dotmode == DOT_ON)) ? 0:1)) {
-        PORTDOT |= _BV(DOT);
-    } else {
-        PORTDOT &= ~_BV(DOT);
-    }
-
     if (savingmode && (fadectr>>3) < 2) {
         toDisplay = 0xffff;
     } else if ((fadectr>>3) < fadeduty) {
@@ -397,8 +406,8 @@ int main() {
     
     adc_init();
     
-    
     initdisplay();
+    dotmode_set(DOT_OFF);
     
     rtc_init();
     
@@ -418,6 +427,8 @@ int main() {
     fadeto(0xffff);
     
     _delay_ms(500);
+    
+    dotmode_set(DOT_BLINK);
     
     wdt_enable(WDTO_250MS);
     
