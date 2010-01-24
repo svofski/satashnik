@@ -162,7 +162,6 @@ inline uint16_t get_display_value() {
     return timef;
 }
 
-
 /// Start timer 0. Timer0 runs at 1MHz
 /// The speed is dictated by the need to keep the neon dot ionized at all times
 void timer0_init() {
@@ -236,7 +235,6 @@ ISR(TIMER0_OVF_vect) {
             }
         } 
         
-        
         if ((fadectr>>3) < fadeduty) {
             toDisplay = rawfadefrom;
         } else {
@@ -287,7 +285,7 @@ ISR(TIMER0_OVF_vect) {
     }
 }
 
-
+/// Calibrate blink counters to quarters of second
 void calibrate_blinking() {
     bcq1 = bcq2 = bcq3 = 65535;
     for(bcq1 = rtc_gettime(1); bcq1 == rtc_gettime(1););
