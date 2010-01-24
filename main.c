@@ -52,6 +52,7 @@ volatile int16_t fadetime;      //!< crossfade time and trigger, write "-1" to s
 volatile uint8_t fademode;      //!< \see _fademode
 
 volatile uint8_t savingmode;    //!< nixe preservation mode
+volatile uint8_t halfbright;    //!< keep low duty
 
 volatile uint8_t dotmode;       //!< dot blinking mode \see _dotmode
 
@@ -71,7 +72,7 @@ uint16_t bcq1;
 uint16_t bcq2;
 uint16_t bcq3;
 
-void set_fadespeed(uint8_t mode) {
+void fade_set(uint8_t mode) {
     switch (mode) {
         case FADE_ON:
             fadetime_full = FADETIME;
@@ -106,16 +107,39 @@ void savingmode_set(uint8_t s) {
     switch (savingmode) {
         case SAVE:
             voltage_setpoint = VOLTAGE_SAVE;
+            halfbright = 1;
             break;
         case WASTE:
             voltage_setpoint = VOLTAGE_WASTE;
+            halfbright = 0;
             break;
         default:
+            voltage_setpoint = VOLTAGE_WASTE;
+            halfbright = 0;
             break;
     }
 }
+
 inline uint8_t savingmode_get() { return savingmode; }
 
+void savingmode_next() {
+    savingmode_set((savingmode_get() + 1) % 3);
+}
+
+void savingmode_keep(uint16_t hhmm) {
+    if (savingmode == SAVENIGHT) {
+        if (hhmm > 0x0100 && hhmm < 0x0700) {
+            voltage_setpoint = VOLTAGE_SAVE;
+            halfbright = 2;                     // darkest
+        } else if (hhmm < 0x0800) {
+            voltage_setpoint = VOLTAGE_SAVE;
+            halfbright = 1;                     // dark
+        } else {
+            voltage_setpoint = VOLTAGE_WASTE;
+            halfbright = 0;                     // normal
+        }
+    }
+}
 
 /// Init display-related DDRs.
 void initdisplay() {
@@ -200,13 +224,13 @@ inline uint16_t get_display_value() {
 void mode_next() {
     display_mode = (display_mode + 1) % NDISPLAYMODES;
     switch (display_mode) {
-        case HHMM:  set_fadespeed(FADE_SLOW);
+        case HHMM:  fade_set(FADE_SLOW);
                     dotmode_set(DOT_BLINK);
                     break;
-        case MMSS:  set_fadespeed(FADE_ON);
+        case MMSS:  fade_set(FADE_ON);
                     dotmode_set(DOT_BLINK);
                     break;
-        case VOLTAGE: set_fadespeed(FADE_OFF);
+        case VOLTAGE: fade_set(FADE_OFF);
                     dotmode_set(DOT_OFF);
                     break;
     }
@@ -220,25 +244,7 @@ uint8_t mode_get() {
 void timer0_init() {
     TIMSK |= _BV(TOIE0);    // enable Timer0 overflow interrupt
     TCNT0 = 256-TIMERCOUNT;
-    //TCCR0 = BV2(CS01,CS00);   // clk/64 = 125000Hz, full overflow rate 488Hz
     TCCR0 = _BV(CS01);
-    
-    //TCCR2 = _BV(CS21); // div 8
-    //TIMSK |= _BV(TOIE2);
-}
-
-ISR(TIMER2_OVF_vect) {
-    static uint8_t t;
-    
-    TCNT2 = 256-25;
-    
-    t++;
-    if ((t & 7) < (( (dotmode == DOT_OFF || blinkctr>bcq2) && !(dotmode == DOT_ON)) ? 0:1) 
-        || ((dotmode == DOT_BLINK) && ((blinkctr <= 4) || ((t & 0x7f) == 0)))) {
-        PORTDOT |= _BV(DOT);
-    } else {
-        PORTDOT &= ~_BV(DOT);
-    }
 }
 
 ISR(TIMER0_OVF_vect) {
@@ -301,9 +307,7 @@ ISR(TIMER0_OVF_vect) {
         } 
         
         
-        if (savingmode && (fadectr>>3) < 1) {
-            toDisplay = 0xffff;
-        } else if ((fadectr>>3) < fadeduty) {
+        if ((fadectr>>3) < fadeduty) {
             toDisplay = rawfadefrom;
         } 
         else {
@@ -334,12 +338,20 @@ ISR(TIMER0_OVF_vect) {
     if ((odd & 0x1f) == 0) {
         display_selectdigit(digitmux);
         digitmux = (digitmux + 1) & 3;
-    } else if ((odd & 0x1f) == 0x18) {
-        // and every other + 1, blank those that stand out too much
-        switch (PORTDIGIT & 017) {
-            case 0x0a: // "3"
-                display_selectdigit(0377);
-                break;
+    } else {
+        if ((odd & 0x1f) == 0x18) {
+            // and every other + 1, blank those that stand out too much
+            switch (PORTDIGIT & 017) {
+                case 0x0a: // "3"
+                    display_selectdigit(0377);
+                    break;
+            }
+        }
+        if (halfbright == 2 && (odd & 0x1f) == 0x8) {
+            display_selectdigit(0377);
+        }
+        if (halfbright == 1 && (odd & 0x1f) == 0x10) {
+            display_selectdigit(0377);
         }
     }
 }
@@ -428,7 +440,7 @@ int main() {
     
     buttons_init();
  
-    set_fadespeed(FADE_ON);
+    fade_set(FADE_ON);
     
     rtime = time = timef = 0xffff;   
 
@@ -438,7 +450,7 @@ int main() {
 
     calibrate_blinking();
 
-    set_fadespeed(FADE_SLOW);    
+    fade_set(FADE_SLOW);    
     fadeto(0xffff);
     
     _delay_ms(500);
@@ -511,6 +523,8 @@ int main() {
             rtime = rtc_gettime(0);
             
             update_daylight(rtime);
+            
+            savingmode_keep(rtime);
             
             switch (mode_get()) {
                 case HHMM:

@@ -56,6 +56,16 @@ void buttons_init() {
                               sei();\
                             }
 
+void set_voltage_dot() {
+    if (mode_get() == VOLTAGE) {
+        if (savingmode_get() == SAVENIGHT) {
+            dotmode_set(DOT_BLINK);
+        } else {
+            dotmode_set(DOT_OFF);
+        }
+    }
+}
+
 /// Handler for button 1: "SET"
 void button1_handler(uint8_t on) {
     static uint8_t skip = 0;
@@ -71,6 +81,7 @@ void button1_handler(uint8_t on) {
         switch (set_state) {
             case SET_NONE:
                 mode_next();
+                set_voltage_dot();
                 skip = 1;
                 break;
                 
@@ -151,7 +162,7 @@ void button2_handler(uint8_t on) {
                 case HHMM:
                     set_state = SET_HOUR;
                     blinkmode_set(BLINK_HH);
-                    set_fadespeed(FADE_OFF);
+                    fade_set(FADE_OFF);
                     dotmode_set(DOT_ON);
                     
                     rtc_time.hour = rtc_xhour(-1);
@@ -159,7 +170,8 @@ void button2_handler(uint8_t on) {
                     fadeto(maketime(rtc_time.hour, rtc_time.minute));
                     break;
                 case VOLTAGE:
-                    savingmode_set((savingmode_get() + 1) & 1);
+                    savingmode_next();
+                    set_voltage_dot();
                     break;
                 default:
                     break;
@@ -196,7 +208,7 @@ void button2_handler(uint8_t on) {
             default:
                 set_state = SET_NONE;
                 blinkmode_set(BLINK_NONE);
-                set_fadespeed(FADE_SLOW);
+                fade_set(FADE_SLOW);
                 dotmode_set(DOT_BLINK);
                 break;
         }

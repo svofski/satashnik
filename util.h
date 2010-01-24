@@ -69,6 +69,7 @@ enum _displaymode {
 enum _savinmode {
     WASTE = 0,
     SAVE,
+    SAVENIGHT,
 };
 
 enum _dotmode {
@@ -111,7 +112,7 @@ void (*blinkhandler)(uint8_t);
 
 /// Sets fading mode and speed
 /// \see _fademode
-void set_fadespeed(uint8_t mode);
+void fade_set(uint8_t mode);
 
 void fadeto(uint16_t t);
 
@@ -127,6 +128,11 @@ uint8_t mode_get();
 
 void savingmode_set(uint8_t s);
 uint8_t savingmode_get();
+void savingmode_next();
+
+// see dot blinking mode
+// \see _dotmode
+void dotmode_set(uint8_t mode);
 
 
 #endif

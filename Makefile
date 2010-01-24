@@ -2,7 +2,7 @@ VERSION		   = 0.1
 PRG            = satashnik
 OBJ            = main.o usrat.o rtc.o util.o voltage.o buttonry.o
 MCU_TARGET     = atmega8
-OPTIMIZE       = -O1
+OPTIMIZE       = -Os
 BUILDNUM       = $(shell cat buildnum)
 
 DEFS           = -DF_CPU=8000000L -DMCU_TARGET=$(MCU_TARGET) -DVERSION=\"$(VERSION)\" -DBUILDNUM=\"$(BUILDNUM)\"
