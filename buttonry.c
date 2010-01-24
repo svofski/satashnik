@@ -6,6 +6,7 @@
 #include "buttonry.h"
 #include "util.h"
 #include "rtc.h"
+#include "modes.h"
 
 enum _setstates {
     SET_NONE = 0,
@@ -16,7 +17,6 @@ enum _setstates {
     SET_MONTH,
     SET_DAY,
 };
-
 
 /// buttons 1 and 2 states for debouncing
 static uint8_t button1_state, button2_state;

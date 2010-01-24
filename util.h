@@ -41,41 +41,10 @@ enum _sa_values {
     SAX = 0377
 };
 
-/// Blinking modes, see timer0 overflow interrupt
-enum _blinkmode {
-    BLINK_NONE = 0,
-    BLINK_HH = 1,
-    BLINK_MM = 2,
-    BLINK_ALL = 3,
-    BLINK_SUPPRESS = 0200,  //!< To be OR'ed with current mode
-};
-
-/// Fade modes. 
-/// Fade is off for in setup and voltmeter modes
-enum _fademode {
-    FADE_OFF = 0,
-    FADE_ON,
-    FADE_SLOW
-};
-
-/// Display modes
-#define NDISPLAYMODES 3
-enum _displaymode {
-    HHMM = 0,               //!< Normal mode, HH:MM
-    MMSS,                   //!< Minutes:Seconds mode, set button resets seconds to zero
-    VOLTAGE                 //!< Voltmeter mode
-};
-
 enum _savinmode {
     WASTE = 0,
     SAVE,
     SAVENIGHT,
-};
-
-enum _dotmode {
-    DOT_BLINK = 0,
-    DOT_ON,
-    DOT_OFF
 };
 
 /// Make BCD time from 2 bytes

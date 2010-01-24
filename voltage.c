@@ -7,7 +7,7 @@
 #include <stdio.h>
 
 volatile uint16_t voltage;                            //!< voltage (magic units)
-volatile uint16_t voltage_setpoint = VOLTAGE_WASTE;   //!< voltage setpoints (magic units)
+static volatile uint16_t voltage_setpoint = VOLTAGE_WASTE;   //!< voltage setpoints (magic units)
 
 extern uint16_t ocr1a_reload;
 
@@ -62,6 +62,15 @@ uint16_t voltage_getbcd() {
     return tobcd16(val);
 }
 
+inline uint16_t voltage_get() {
+    return voltage;
+}
+
+void voltage_set(uint16_t setpoint) {
+    voltage_setpoint = setpoint;
+}
+
+inline uint16_t voltage_setpoint_get() { return voltage_setpoint; }
 
 ISR(ADC_vect) {
     voltage = (voltage + ADC) / 2;

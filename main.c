@@ -27,6 +27,7 @@
 #include "util.h"
 #include "voltage.h"
 #include "buttonry.h"
+#include "modes.h"
 
 volatile uint16_t time = 0;         //!< current display value
 volatile uint16_t timef = 0;        //!< fadeto display value
@@ -40,81 +41,39 @@ uint16_t ocr1a_reload = 121;
 
 volatile uint8_t blinktick = 0;     //!< 1 when a pressed button is autorepeated
 
-volatile uint8_t display_mode = HHMM;   //!< current display mode. \see _displaymode
-
-
-volatile uint8_t blinkmode;     //!< current blinking mode
 volatile uint16_t blinkctr;     //!< blinkmode counter
 volatile uint8_t blinkduty;     //!< blinkmode duty 
 
 volatile uint8_t fadeduty, fadectr; //!< crossfade counters
 volatile int16_t fadetime;      //!< crossfade time and trigger, write "-1" to start fade to timef
-volatile uint8_t fademode;      //!< \see _fademode
 
 volatile uint8_t savingmode;    //!< nixe preservation mode
 volatile uint8_t halfbright;    //!< keep low duty
 
-volatile uint8_t dotmode;       //!< dot blinking mode \see _dotmode
-
-static uint8_t daylight_adjusted = 0;
-
-
-#define FADETIME    128        //<! Transition time for xfading digits, in tmr0 overflow-counts
-
-#define FADETIME_S  256        //<! Slow transition time
+static uint8_t daylight_adjusted = 0; //!< a flag that tells that DST adjustment took place already
 
 #define TIMERCOUNT  25          //<! Timer reloads with 256-TIMERCOUNT
 
-volatile uint16_t fadetime_full = FADETIME;
-volatile uint16_t fadetime_quart= FADETIME/4;
 
+/// Values for blinking, calibrated to 1/4th of a second at startup
 uint16_t bcq1;
 uint16_t bcq2;
 uint16_t bcq3;
 
-void fade_set(uint8_t mode) {
-    switch (mode) {
-        case FADE_ON:
-            fadetime_full = FADETIME;
-            fadetime_quart = FADETIME/4;
-            fademode = FADE_ON;
-            break;
-        case FADE_OFF:
-            fademode = FADE_OFF;
-            break;
-        case FADE_SLOW:
-            fadetime_full = FADETIME_S;
-            fadetime_quart = FADETIME_S/4;
-            fademode = FADE_ON;
-            break;
-    }
-}
-
-
-void dotmode_set(uint8_t mode) {
-    dotmode = mode;
-}
-
-inline void blinkmode_set(uint8_t mode) {
-    blinkmode = mode;
-    //blinkctr = 0;
-}
-
-inline uint8_t blinkmode_get() { return blinkmode; }
 
 void savingmode_set(uint8_t s) {
     savingmode = s; 
     switch (savingmode) {
         case SAVE:
-            voltage_setpoint = VOLTAGE_SAVE;
+            voltage_set(VOLTAGE_SAVE);
             halfbright = 1;
             break;
         case WASTE:
-            voltage_setpoint = VOLTAGE_WASTE;
+            voltage_set(VOLTAGE_WASTE);
             halfbright = 0;
             break;
         default:
-            voltage_setpoint = VOLTAGE_WASTE;
+            voltage_set(VOLTAGE_WASTE);
             halfbright = 0;
             break;
     }
@@ -129,13 +88,13 @@ void savingmode_next() {
 void savingmode_keep(uint16_t hhmm) {
     if (savingmode == SAVENIGHT) {
         if (hhmm > 0x0100 && hhmm < 0x0700) {
-            voltage_setpoint = VOLTAGE_SAVE;
+            voltage_set(VOLTAGE_SAVE);
             halfbright = 2;                     // darkest
         } else if (hhmm < 0x0800) {
-            voltage_setpoint = VOLTAGE_SAVE;
+            voltage_set(VOLTAGE_SAVE);
             halfbright = 1;                     // dark
         } else {
-            voltage_setpoint = VOLTAGE_WASTE;
+            voltage_set(VOLTAGE_WASTE);
             halfbright = 0;                     // normal
         }
     }
@@ -184,7 +143,7 @@ void display_selectdigit(uint8_t n) {
     switch (n) {
         case SA1: 
                 PORTSA234 &= ~BV3(5,6,7);
-                _delay_ms(0.01); //ghosting
+                _delay_ms(0.01); //ghosting prevention
                 if (display_currentdigit(n)) {
                     PORTSA1 |= _BV(0);
                 }
@@ -194,7 +153,7 @@ void display_selectdigit(uint8_t n) {
         case SA4:
                 PORTSA1 &= ~_BV(0);
                 PORTSA234 &= ~BV3(5,6,7);
-                _delay_ms(0.01); //ghosting
+                _delay_ms(0.01); //ghosting prevention
                 if (display_currentdigit(n)) {
                     PORTSA234 |= 0200 >> (n-1);
                 }
@@ -221,26 +180,9 @@ inline uint16_t get_display_value() {
     return timef;
 }
 
-void mode_next() {
-    display_mode = (display_mode + 1) % NDISPLAYMODES;
-    switch (display_mode) {
-        case HHMM:  fade_set(FADE_SLOW);
-                    dotmode_set(DOT_BLINK);
-                    break;
-        case MMSS:  fade_set(FADE_ON);
-                    dotmode_set(DOT_BLINK);
-                    break;
-        case VOLTAGE: fade_set(FADE_OFF);
-                    dotmode_set(DOT_OFF);
-                    break;
-    }
-}
 
-uint8_t mode_get() {
-    return display_mode;
-}
-
-/// Start timer 0. Timer0 runs at 1MHz and overflows at 3906 Hz.
+/// Start timer 0. Timer0 runs at 1MHz
+/// The speed is dictated by the need to keep the neon dot ionized at all times
 void timer0_init() {
     TIMSK |= _BV(TOIE0);    // enable Timer0 overflow interrupt
     TCNT0 = 256-TIMERCOUNT;
@@ -251,11 +193,13 @@ ISR(TIMER0_OVF_vect) {
     uint16_t toDisplay = time;
     static uint8_t odd = 0;
     
-    // Reload the timer
     TCNT0 = 256-TIMERCOUNT;
 
     odd += 1;
 
+    // Handle the dot, which must be sustained at all times
+    // High-frequency short-duty seems to be an acceptable way
+    // of keeping the gas ionized, yet practically invisible
     if ((odd & 7) < (( (dotmode == DOT_OFF || blinkctr>bcq2) && !(dotmode == DOT_ON)) ? 0:1) 
         || ((dotmode == DOT_BLINK) && ((blinkctr <= 4) || ((odd & 0x7f) == 0)))) {
         PORTDOT |= _BV(DOT);
@@ -263,23 +207,27 @@ ISR(TIMER0_OVF_vect) {
         PORTDOT &= ~_BV(DOT);
     }
     
+    // Signal the main loop to continue rolling
     if ((odd & 0x3f) == 0) {
         blinktick |= _BV(2);
     }
     
+    // A "slow" cycle every 32 fast cycles, display business
     if ((odd & 0x1f) == 0) {
-        // In blink modes: increment the counter and activate "blinktick" for button autorepeat
+        // keep blinkctr for things that happen on 1/4ths of a second
         blinkctr++;
         if (blinkctr > (bcq2<<1)) {
             blinkctr = 0;
         }
         
-        if (blinkmode != BLINK_NONE) {
+        // signal the main loop to autorepeat buttons when needed
+        if (blinkmode_get() != BLINK_NONE) {
             if (blinkctr == bcq1 || blinkctr == bcq2 || blinkctr == bcq3 || blinkctr == 1) {
                 blinktick |= _BV(1);
             }
         }
         
+        // fadetime == -1 indicates start of fade
         if (fadetime == -1) {
             if (fademode == FADE_OFF) {
                 fadeduty = 1;
@@ -309,14 +257,14 @@ ISR(TIMER0_OVF_vect) {
         
         if ((fadectr>>3) < fadeduty) {
             toDisplay = rawfadefrom;
-        } 
-        else {
+        } else {
             toDisplay = rawfadeto;
         }
         fadectr = (fadectr + 1) & 037;
     
-        if (blinkmode != BLINK_NONE && (blinkmode & 0200) == 0 && blinkctr > bcq2) {
-            switch (blinkmode) {
+        // blinking (blinkmode & 0200 temporarily disables blinking)
+        if (blinkmode_get() != BLINK_NONE && (blinkmode_get() & 0200) == 0 && blinkctr > bcq2) {
+            switch (blinkmode_get()) {
                 case BLINK_HH:
                     toDisplay |= 0xff00;
                     break;
@@ -334,19 +282,20 @@ ISR(TIMER0_OVF_vect) {
         digitsraw = toDisplay;
     }
     
-    // every other cycle, select the next digit...
+    // every other "slow" cycle, select the next digit...
     if ((odd & 0x1f) == 0) {
         display_selectdigit(digitmux);
         digitmux = (digitmux + 1) & 3;
     } else {
+        // switch bright digits earlier
         if ((odd & 0x1f) == 0x18) {
-            // and every other + 1, blank those that stand out too much
             switch (PORTDIGIT & 017) {
                 case 0x0a: // "3"
                     display_selectdigit(0377);
                     break;
             }
         }
+        // shorten duty cycle for cathode-preserving modes
         if (halfbright == 2 && (odd & 0x1f) == 0x8) {
             display_selectdigit(0377);
         }
@@ -440,17 +389,18 @@ int main() {
     
     buttons_init();
  
-    fade_set(FADE_ON);
+    fade_set(FADE_SLOW);
     
     rtime = time = timef = 0xffff;   
 
-    fadeto(0x1838);
-    
     timer0_init();
+
+    fadeto(0x1838);
 
     calibrate_blinking();
 
     fade_set(FADE_SLOW);    
+
     fadeto(0xffff);
     
     _delay_ms(500);
@@ -496,7 +446,7 @@ int main() {
                             skip = 255;
                         }
                         
-                        printf_P(PSTR("OCR1A=%d ICR1=%d S=%d V=%d, Time=%04x (%d) adjed=%d\n"), OCR1A, ICR1, voltage_setpoint, voltage, time, rtc_xdow(-1), daylight_adjusted);
+                        printf_P(PSTR("OCR1A=%d ICR1=%d S=%d V=%d, Time=%04x (%d) adjed=%d\n"), OCR1A, ICR1, voltage_setpoint_get(), voltage_get(), time, rtc_xdow(-1), daylight_adjusted);
                         break;
             }
             

@@ -11,10 +11,6 @@
 #define VOLTAGE_WASTE   405                     //!< ~199V
 #define VOLTAGE_SAVE    367                     //!< ~180V
 
-extern volatile uint16_t voltage;               //!< voltage (magic units)
-extern volatile uint16_t voltage_setpoint;      //!< voltage setpoints (magic units)
-
-
 /// Setup PWM output for the boost converter
 void pump_init();
 
@@ -25,6 +21,12 @@ void adc_init();
 /// Terminate boost converter operation 
 void pump_nomoar();
 
+uint16_t voltage_get();
+
 uint16_t voltage_getbcd();
+
+void voltage_set(uint16_t setpoint);    //!< set voltage setpoint
+
+uint16_t voltage_setpoint_get();
 
 #endif
