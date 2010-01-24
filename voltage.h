@@ -11,11 +11,9 @@
 #define VOLTAGE_WASTE   405                     //!< ~199V
 #define VOLTAGE_SAVE    367                     //!< ~180V
 
-/// Setup PWM output for the boost converter
-void pump_init();
 
-/// Init ADC converter and ADC interrupt
-void adc_init();
+/// Start voltage booster
+void voltage_start();
 
 
 /// Terminate boost converter operation 

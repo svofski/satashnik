@@ -13,12 +13,11 @@ enum _fademode {
     FADE_SLOW
 };
 
-extern volatile uint8_t fademode;
 extern volatile uint16_t fadetime_full;
 extern volatile uint16_t fadetime_quart;
 
 void fade_set(uint8_t mode);
-
+enum _fademode fade_get();
 
 /// Dot modes
 enum _dotmode {
@@ -55,5 +54,18 @@ enum _blinkmode {
 void blinkmode_set(uint8_t mode);
 
 uint8_t blinkmode_get();
+
+/// Saving modes
+enum _savinmode {
+    WASTE = 0,              //!< Full-on all the time
+    SAVE,                   //!< constantly preserve
+    SAVENIGHT,              //!< preserve 00:00-08:00
+};
+
+void savingmode_set(uint8_t s);
+uint8_t savingmode_get();
+void savingmode_next();
+
+
 
 #endif

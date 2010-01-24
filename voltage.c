@@ -9,8 +9,7 @@
 volatile uint16_t voltage;                            //!< voltage (magic units)
 static volatile uint16_t voltage_setpoint = VOLTAGE_WASTE;   //!< voltage setpoints (magic units)
 
-extern uint16_t ocr1a_reload;
-
+static const uint16_t ocr1a_reload = 121;
 
 void pump_init() {
     // set fast pwm mode
@@ -54,6 +53,12 @@ void adc_init() {
     //ADCSRA = BV5(ADEN, ADIE, ADPS2, ADPS1, ADPS0); 
 
     ADCSRA |= _BV(ADSC); 
+}
+
+/// Start voltage booster
+void voltage_start() {
+    adc_init();
+    pump_init();
 }
 
 uint16_t voltage_getbcd() {

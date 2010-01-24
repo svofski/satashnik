@@ -41,12 +41,6 @@ enum _sa_values {
     SAX = 0377
 };
 
-enum _savinmode {
-    WASTE = 0,
-    SAVE,
-    SAVENIGHT,
-};
-
 /// Make BCD time from 2 bytes
 #define maketime(hh,mm) (((hh) << 8) + (mm))
 

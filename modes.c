@@ -6,7 +6,7 @@
 //// Fade mode
 ////
 
-volatile uint8_t fademode;      //!< \see _fademode
+static volatile uint8_t fademode;      //!< \see _fademode
 
 volatile uint16_t fadetime_full;
 volatile uint16_t fadetime_quart;
@@ -28,6 +28,8 @@ void fade_set(uint8_t mode) {
             break;
     }
 }
+
+inline enum _fademode fade_get() { return fademode; }
 
 
 ////
@@ -77,3 +79,23 @@ void blinkmode_set(uint8_t mode) {
 }
 
 inline uint8_t blinkmode_get() { return blinkmode; }
+
+
+////
+//// Saving mode
+////
+
+static volatile uint8_t savingmode;    //!< nixe preservation mode
+
+
+void savingmode_set(uint8_t s) {
+    savingmode = s; 
+}
+
+inline uint8_t savingmode_get() { return savingmode; }
+
+void savingmode_next() {
+    savingmode_set((savingmode_get() + 1) % 3);
+}
+
+

@@ -1,6 +1,6 @@
 VERSION		   = 0.1
 PRG            = satashnik
-OBJ            = main.o modes.o usrat.o rtc.o util.o voltage.o buttonry.o
+OBJ            = main.o modes.o usrat.o rtc.o util.o voltage.o buttonry.o cal.o
 MCU_TARGET     = atmega8
 OPTIMIZE       = -Os
 BUILDNUM       = $(shell cat buildnum)
