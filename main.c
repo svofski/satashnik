@@ -306,10 +306,18 @@ int main() {
     volatile uint16_t skip = 0;
     uint8_t uart_enabled = 0;
     volatile uint16_t mmss, mmss1;
-    
+
+    OSCCAL = 0xA6;
+
     pump_nomoar();
     
     usart_init(F_CPU/16/19200-1);
+    
+    //for(OSCCAL=0;;) {
+    //printf_P(PSTR("OSCCAL=%x  \n"), OSCCAL);
+    //OSCCAL++;
+    //}
+
     
     printf_P(PSTR("\033[2J\033[HB%s WHAT DO YOU MEAN? %02x\n"), BUILDNUM, MCUCSR);
 
