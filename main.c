@@ -372,6 +372,10 @@ int main() {
                         case '=':   // die
                                     for(;;);
                                     break;
+                        case 'q':   voltage_set(voltage_setpoint_get()-1);
+                                    break;
+                        case 'w':   voltage_set(voltage_setpoint_get()+1);
+                                    break;
                         default:
                                     break;
                         }

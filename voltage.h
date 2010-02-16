@@ -8,8 +8,8 @@
 #ifndef _VOLTAGE_H
 #define _VOLTAGE_H
 
-#define VOLTAGE_WASTE   405                     //!< ~199V
-#define VOLTAGE_SAVE    367                     //!< ~180V
+#define VOLTAGE_WASTE   370                     //!< ~180V
+#define VOLTAGE_SAVE    355                     //!< ~170V
 
 
 /// Start voltage booster
