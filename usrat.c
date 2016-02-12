@@ -79,8 +79,7 @@ uint8_t uart_getc() {
 	return result;
 }
 
-void SIG_UART_RECV( void ) __attribute__ ( ( signal ) );  
-void SIG_UART_RECV( void ) {
+ISR(USART_RXC_vect) {
 	rx_buffer[rx_buffer_in] = (uint8_t)UDR;
 	rx_buffer_in = (rx_buffer_in + 1) % RX_BUFFER_SIZE;
 }
